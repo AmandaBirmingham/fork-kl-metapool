@@ -20,71 +20,79 @@ LOG_FILE="deployment_$(date +%Y%m%d_%H%M%S).log"
 # Function to show usage instructions
 show_usage() {
   cat << EOF
-Usage: $0 <repo_name> <tag_name> [kernel_prefix] [OPTIONS]
+Usage: $0 -r <repo_name> -t <tag_name> [-c <conda_prefix>] [-j <jupyter_prefix>] [--dry-run] [--help]
 
-Deploy a github repo to a new conda environment and JupyterHub kernel.
+Deploy a GitHub repo to a new Conda environment and JupyterHub kernel.
 
-Positional arguments:
-  repo_name          GitHub repository name (e.g., MyUser/my-repo)
-  tag_name           Git tag or branch to deploy (e.g., 2025.05.1+testdeploy)
-  kernel_prefix      (Optional) Path to install the Jupyter kernel spec
-                     (e.g., /shared/local).  Necessary for installing kernels
-                     to a system-wide shared location.
+Required options:
+  -r, --repo <repo_name>              GitHub repository name (e.g., MyUser/my-repo)
+  -t, --tag <tag_name>                Git tag or branch to deploy (e.g., 2025.05.1+testdeploy)
 
-Options:
-  --dry-run          Show what would happen without making changes
-  --help             Show this help message and exit
+Optional options:
+  -c, --conda-prefix <conda_dir>      Directory in which to install the conda environment
+                                      (e.g., /bin/envs). Necessary for installing
+                                      environments to a system-wide shared location.
+  -j, --jupyter-prefix <jupyter_dir>  Directory in which to install the Jupyter kernel spec
+                                      (e.g., /shared/local). Necessary for installing
+                                      kernels to a system-wide shared location.
+  -d, -dry-run                        Show what would happen without making changes
+  -h, --help                          Show this help message and exit
 
-Example:
-  $0 MyUser/my-repo 2025.05.1+testdeploy
-  $0 MyUser/my-repo 2025.05.1+testdeploy /shared/local --dry-run
+Examples:
+  $0 -r MyUser/my-repo -t 2025.05.1+testdeploy
+  $0 -r MyUser/my-repo -c /bin/envs -j /shared/local -t 2025.05.1+testdeploy --dry-run
 EOF
   exit 1
 }
 
-# Parse command line arguments
 parse_args() {
-  # Check if at least repo and deploy tag are provided
-  if [ $# -lt 2 ]; then
-    show_usage
-  fi
-
-  GITHUB_REPO=$1
-  shift
-
-  DEPLOY_TAG=$1
-  shift
-
-    # Check if next arg is the optional kernel prefix (i.e., not a flag like --dry-run)
-  if [[ $# -gt 0 && "$1" != --* ]]; then
-    KERNEL_PREFIX=$1
-    KERNEL_PREFIX=$(echo "$KERNEL_PREFIX" | sed 's:/*$::') # Remove trailing slashes
-    shift
-  else
-    KERNEL_PREFIX=""
-  fi
-
-  
   # Default values
+  GITHUB_REPO=""
+  DEPLOY_TAG=""
+  KERNEL_PREFIX=""
+  CONDA_PREFIX=""
   DRY_RUN=false
-  
-  # Parse optional arguments
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --dry-run)
+      -r|--repo)
+        GITHUB_REPO="$2"
+        shift 2
+        ;;
+      -j|--jupyter-prefix)
+        KERNEL_PREFIX="$2"
+        KERNEL_PREFIX=$(echo "$KERNEL_PREFIX" | sed 's:/*$::') # Remove trailing slashes
+        shift 2
+        ;;
+      -c|--conda-prefix)
+        CONDA_PREFIX="$2"
+        CONDA_PREFIX=$(echo "$CONDA_PREFIX" | sed 's:/*$::') # Remove trailing slashes
+        shift 2
+        ;;
+      -t|--tag)
+        DEPLOY_TAG="$2"
+        shift 2
+        ;;
+      -d|--dry-run)
         DRY_RUN=true
         log "INFO" "Dry run mode enabled - no changes will be made"
+        shift
         ;;
-      --help)
+      -h|--help)
         show_usage
         ;;
       *)
         echo "Unrecognized input: $1"
-        exit 1
+        show_usage
         ;;
     esac
-    shift
   done
+
+  # Validate required arguments
+  if [[ -z "$GITHUB_REPO" || -z "$DEPLOY_TAG" ]]; then
+    echo "Error: --repo and --tag are required."
+    show_usage
+  fi
 }
 
 # Log message with level
@@ -168,8 +176,19 @@ setup_new_environment() {
   # Create environment name based on deploy type
   log "INFO" "Setting up new environment '$DEPLOY_NAME'..."
 
+
+  if [[ -n "$CONDA_PREFIX" ]]; then
+    CONDA_PATH="$CONDA_PREFIX/$DEPLOY_NAME"
+    CONDA_LOC_CMD="--prefix $CONDA_PATH"
+    log "INFO" "Creating conda environment by prefix: $CONDA_PATH"
+  else
+    CONDA_LOC_CMD="--name $DEPLOY_NAME"
+    log "INFO" "Creating conda environment by name: $DEPLOY_NAME"
+  fi
+
   if [ "$DRY_RUN" = true ]; then
-    log "INFO" "DRY RUN: Would create conda environment '$DEPLOY_NAME', then install requirements and repo '$GITHUB_REPO'"
+    log "INFO" "DRY RUN: Would create conda environment '$DEPLOY_NAME'"
+    log "INFO" "DRY_RUN: Would install requirements and repo '$GITHUB_REPO'"
     log "INFO" "DRY_RUN: Would install kernel '$DEPLOY_NAME'"
     return
   fi
