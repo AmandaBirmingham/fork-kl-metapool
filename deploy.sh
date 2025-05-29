@@ -38,7 +38,7 @@ Optional options:
   -j, --jupyter-prefix <jupyter_dir>  Directory in which to install the Jupyter kernel spec
                                       (e.g., /shared/local). Necessary for installing
                                       kernels to a system-wide shared location.
-  -d, -dry-run                        Show what would happen without making changes
+  -d, --dry-run                        Show what would happen without making changes
   -h, --help                          Show this help message and exit
 
 Examples:
@@ -202,12 +202,13 @@ setup_new_environment() {
   local repo_install_cmd
   local kernel_install_cmd
 
+  # CONDA_LOC_CMD is set in the main function, before this call
   log "INFO" "Creating conda environment with ${CONDA_LOC_CMD[*]}"
 
   if [ "$DRY_RUN" = true ]; then
     log "INFO" "DRY RUN: Would create conda environment"
-    log "INFO" "DRY_RUN: Would install requirements and repo '$GITHUB_REPO'"
-    log "INFO" "DRY_RUN: Would install kernel '$DEPLOY_NAME'"
+    log "INFO" "DRY RUN: Would install requirements and repo '$GITHUB_REPO'"
+    log "INFO" "DRY RUN: Would install kernel '$DEPLOY_NAME'"
     return
   fi
 
