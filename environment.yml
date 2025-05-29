@@ -2,8 +2,7 @@ name: metapool
 channels:
   - bioconda
   - conda-forge
-  - ccbbucsd
-  - r
+  - anaconda
   - defaults
 dependencies:
   - notebook
