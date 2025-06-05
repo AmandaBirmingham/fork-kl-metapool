@@ -242,18 +242,17 @@ setup_new_environment() {
   fi
 
   # Clone the repository to get requirements
-  local temp_dir
-  temp_dir=$(mktemp -d)
   log "INFO" "Cloning repository to get requirements..."
-
   # Note that lightweight cloning (e.g. --depth 1) that leaves out full history only works for lightweight (not annotated) tags
   GITHUB_URL="https://github.com/$GITHUB_REPO"
-  git clone --depth 1 --branch "$DEPLOY_TAG" "$GITHUB_URL" "$temp_dir"
+  git clone --depth 1 --branch "$DEPLOY_TAG" "$GITHUB_URL" "$SETUP_TEMP_DIR"
 
   # Create new conda environment from environment.yml
-  if [ -f "$temp_dir/environment.yml" ]; then
+  local env_yml_path
+  env_yml_path="$SETUP_TEMP_DIR/environment.yml"
+  if [ -f "$env_yml_path" ]; then
     log "INFO" "Found environment.yml, installing conda environment and dependencies..."
-    conda_install_cmd=(conda env create --file "$temp_dir/environment.yml" "${CONDA_LOC_CMD[@]}")
+    conda_install_cmd=(conda env create --file "$env_yml_path" "${CONDA_LOC_CMD[@]}")
     if ! "${conda_install_cmd[@]}"; then
       error_exit "Failed to install from environment.yml"
     fi
@@ -283,9 +282,6 @@ setup_new_environment() {
   if ! "${kernel_install_cmd[@]}"; then
     rollback "Failed to install kernel" "$DEPLOY_NAME"
   fi
-
-  # Clean up temp directory used for software installation
-  rm -rf "$temp_dir"
 }
 
 # Verify a newly installed environment
@@ -327,10 +323,8 @@ verify_environment() {
   fi
 
   # Create a temporary notebook to verify the kernel
-  local temp_dir
   local temp_notebook
-  temp_dir=$(mktemp -d)
-  temp_notebook="$temp_dir/deploy_test.ipynb"
+  temp_notebook="$VERIFY_TEMP_DIR/deploy_test.ipynb"
   cat > "$temp_notebook" << EOF
 {
  "cells": [
@@ -373,8 +367,6 @@ EOF
     return_value=0
   fi
 
-  # clean up temp directory used for kernel verification
-  rm -r "$temp_dir"
   return $return_value
 }
 
@@ -412,11 +404,21 @@ main() {
     error_exit "Kernel '$DEPLOY_NAME' already exists"
   fi
   
-  # Set up new environment
+  # Create a temp directory to hold the setup files and ensure it is cleaned up
+  # on exit, then set up the new environment
+  SETUP_TEMP_DIR=$(mktemp -d)
+  trap 'rm -rf "$SETUP_TEMP_DIR"' EXIT
   setup_new_environment
   
   # Verify the new environment and kernel
   if [ "$DRY_RUN" = false ]; then
+    # Create a temp directory for verification files and ensure it is cleaned
+    # up on exit, then verify the new environment.  NOT using the same temp
+    # directory as the one used for setup to ensure that the verification
+    # isn't incorrectly depending on any of the setup files.
+    VERIFY_TEMP_DIR=$(mktemp -d)
+    trap 'rm -rf "$VERIFY_TEMP_DIR"' EXIT
+
     log "INFO" "Verifying new environment..."
     # NB: double use of "$DEPLOY_NAME" is NOT a typo :)
     if ! verify_environment "$DEPLOY_NAME" "$DEPLOY_NAME"; then
