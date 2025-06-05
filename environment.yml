@@ -20,6 +20,7 @@ dependencies:
   - scikit-learn
   - biom-format
   - flake8
+  - papermill
   - watermark
   - pip:
       - click
