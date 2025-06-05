@@ -38,7 +38,7 @@ Optional options:
   -j, --jupyter-prefix <jupyter_dir>  Directory in which to install the Jupyter kernel spec
                                       (e.g., /shared/local). Necessary for installing
                                       kernels to a system-wide shared location.
-  -d, --dry-run                        Show what would happen without making changes
+  -d, --dry-run                       Show what would happen without making changes
   -h, --help                          Show this help message and exit
 
 Examples:
@@ -107,13 +107,16 @@ log() {
 
 # Initialize logging
 setup_logging() {
+  # capture any stdout and append to a log file while
+  # *also* writing to the screen; do the same with stderr
   exec > >(tee -a "$LOG_FILE") 2>&1
   log "INFO" "Starting deployment script..."
 }
 
-# Exit with error message
+# Exit with error message and report deployment failure
 error_exit() {
-  log "ERROR" "$1"
+  local message=$1
+  log "ERROR" "Deployment failed: $message"
   exit 1
 }
 
@@ -124,6 +127,8 @@ check_dependencies() {
   # NB: these are just the dependencies to run this script, not
   # the dependencies for the lab notebooks
   for cmd in conda git python; do
+    # check if command is available in shell's $PATH;
+    # don't want the output (path to command)--just the exit code
     if ! command -v $cmd &> /dev/null; then
       error_exit "Required command not found: $cmd"
     fi
@@ -148,7 +153,12 @@ kernel_exists() {
   local kernel_name=$1
 
   # if jupyter is available, use it to check for kernel existence since it
-  # will look in all the relevant places
+  # will look in all the relevant places; this is preferable because jupyter
+  # DOES allow multiple kernels with the same name to exist in different
+  # locations, and it silently returns the first one it finds based on its
+  # internal search order, which could lead to very confusing bugs--so if
+  # ANY path that jupyter checks contains a kernel of the specified name,
+  # we want to refuse to make another one with the same name
   if command -v jupyter &> /dev/null; then
     local kernel_names
     # Extract kernel names
@@ -163,7 +173,11 @@ kernel_exists() {
         return 0  # Function succeeded
     fi
   else
-    # Check just in the specified kernel location, if one was provided
+    # If jupyter is not available, we have to fall back to the only method
+    # left to us, which is to check that there's no kernel of the specified
+    # name in the kernel directory the user specified--if they did specify
+    # one.  If they didn't, we're basically out of luck for checking and
+    # will just assume the kernel doesn't exist.
     local formatted_kernel_dir=""
     formatted_kernel_dir=$(format_kernels_dir "$KERNEL_PREFIX")
     if [[ -n "$formatted_kernel_dir" ]]; then
@@ -193,6 +207,21 @@ kernel_exists() {
   return 0  # Function succeeded
 }
 
+# Undo creation of environment if downstream steps fail
+rollback() {
+    local message=$1
+    local deploy_name=$2
+
+    log "WARNING" "Removing conda environment '$deploy_name' due to error..."
+    local conda_remove_cmd
+    # CONDA_LOC_CMD is set in the main function, before this call
+    conda_remove_cmd=(conda env remove "${CONDA_LOC_CMD[@]}" --yes)
+    if ! "${conda_remove_cmd[@]}"; then
+      log "WARNING" "Failed to remove environment with ${CONDA_LOC_CMD[*]}"
+    fi
+    error_exit "$message"
+}
+
 # Create and set up new environment
 setup_new_environment() {
   # Create environment name based on deploy type
@@ -202,7 +231,7 @@ setup_new_environment() {
   local repo_install_cmd
   local kernel_install_cmd
 
-  # CONDA_LOC_CMD is set in the main function, before this call
+  # CONDA_LOC_CMD is set in the main function, before this function is called
   log "INFO" "Creating conda environment with ${CONDA_LOC_CMD[*]}"
 
   if [ "$DRY_RUN" = true ]; then
@@ -213,23 +242,29 @@ setup_new_environment() {
   fi
 
   # Clone the repository to get requirements
-  TEMP_DIR=$(mktemp -d)
+  local temp_dir
+  temp_dir=$(mktemp -d)
   log "INFO" "Cloning repository to get requirements..."
 
   # Note that lightweight cloning (e.g. --depth 1) that leaves out full history only works for lightweight (not annotated) tags
   GITHUB_URL="https://github.com/$GITHUB_REPO"
-  git clone --depth 1 --branch "$DEPLOY_TAG" "$GITHUB_URL" "$TEMP_DIR"
+  git clone --depth 1 --branch "$DEPLOY_TAG" "$GITHUB_URL" "$temp_dir"
 
   # Create new conda environment from environment.yml
-  if [ -f "$TEMP_DIR/environment.yml" ]; then
+  if [ -f "$temp_dir/environment.yml" ]; then
     log "INFO" "Found environment.yml, installing conda environment and dependencies..."
-    conda_install_cmd=(conda env create --file "$TEMP_DIR/environment.yml" "${CONDA_LOC_CMD[@]}")
+    conda_install_cmd=(conda env create --file "$temp_dir/environment.yml" "${CONDA_LOC_CMD[@]}")
     if ! "${conda_install_cmd[@]}"; then
-      report "Failed to install from environment.yml"
+      error_exit "Failed to install from environment.yml"
     fi
   else
-    report "Could not find environment.yml"
+    error_exit "Could not find environment.yml"
   fi
+
+  # Failures before this point just report an error and exit;
+  # after this point, we need to roll back the environment creation
+  # if anything fails.  Note that kernel rollback (if necessary) is handled
+  # in the verify_environment function, which is called after this one.
 
   # Install the repo
   log "INFO" "Installing repo $GITHUB_REPO"
@@ -239,6 +274,7 @@ setup_new_environment() {
   fi
 
   # Install the kernel; send to user-specified directory iff KERNEL_PREFIX is set else to new conda env
+  # Note that for all code running after this point, $KERNEL_PREIFIX will ALWAYS be set (to something)
   if [ -z "$KERNEL_PREFIX" ]; then
     KERNEL_PREFIX=$(conda run "${CONDA_LOC_CMD[@]}" python -c 'import sys; print(sys.prefix)')
   fi
@@ -248,8 +284,8 @@ setup_new_environment() {
     rollback "Failed to install kernel" "$DEPLOY_NAME"
   fi
 
-  # Clean up
-  rm -rf "$TEMP_DIR"
+  # Clean up temp directory used for software installation
+  rm -rf "$temp_dir"
 }
 
 # Verify a newly installed environment
@@ -259,13 +295,19 @@ verify_environment() {
   
   log "INFO" "Verifying environment '$env_name' and kernel '$kernel_name'..."
 
-  # Check if environment exists
+  # Check if environment exists; if it is a prefix-based environment,
+  # we have to look at the directory directly; if it is a named environment,
+  # we can use conda info --envs to check for its existence
   if [[ -n "$CONDA_PREFIX" ]]; then
     if [ ! -d "$CONDA_PATH/conda-meta" ]; then
       log "ERROR" "Conda environment not found at prefix: $CONDA_PATH"
       return 1
     fi
   else
+    # extract first column of conda info --envs output and match:
+    # -F = fixed string, not regex
+    # -x = matches whole line (exact match)
+    # -q = quiet mode, no output, just exit status
     if ! conda info --envs | awk '{print $1}' | grep -Fxq "$env_name"; then
       log "ERROR" "Named conda environment '$env_name' not found"
       return 1
@@ -275,6 +317,7 @@ verify_environment() {
   # Check if kernel we just tried to create in fact exists now
   log "INFO" "Checking if kernel '$kernel_name' exists for prefix '$KERNEL_PREFIX'..."
   exists=$(kernel_exists "$kernel_name")
+  # $? holds the exit code of the last command executed
   if [ $? -ne 0 ]; then
     log "ERROR" "Error checking kernel existence"
     return 1
@@ -284,9 +327,11 @@ verify_environment() {
   fi
 
   # Create a temporary notebook to verify the kernel
-  TEMP_DIR=$(mktemp -d)
-  TEMP_NOTEBOOK="$TEMP_DIR/deploy_test.ipynb"
-  cat > "$TEMP_NOTEBOOK" << EOF
+  local temp_dir
+  local temp_notebook
+  temp_dir=$(mktemp -d)
+  temp_notebook="$temp_dir/deploy_test.ipynb"
+  cat > "$temp_notebook" << EOF
 {
  "cells": [
   {
@@ -312,10 +357,11 @@ verify_environment() {
 }
 EOF
 
-  log "INFO" "Executing temporary notebook '$TEMP_NOTEBOOK'..."
+  log "INFO" "Executing temporary notebook '$temp_notebook'..."
 
   local return_value
-  local notebook_cmd=(conda run "${CONDA_LOC_CMD[@]}" jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=60 "$TEMP_NOTEBOOK")
+  # CONDA_LOC_CMD is set in the main function, before this function is called
+  local notebook_cmd=(conda run "${CONDA_LOC_CMD[@]}" jupyter nbconvert --to notebook --execute --ExecutePreprocessor.timeout=60 "$temp_notebook")
   if ! "${notebook_cmd[@]}"; then
     log "ERROR" "Kernel verification failed - kernel could not execute notebook"
 
@@ -327,28 +373,9 @@ EOF
     return_value=0
   fi
 
-  rm -r "$TEMP_DIR"
+  # clean up temp directory used for kernel verification
+  rm -r "$temp_dir"
   return $return_value
-}
-
-# Report if deployment fails
-report() {
-  local message=$1
-  error_exit "Deployment failed: $message"
-}
-
-# Undo creation of environment if downstream steps fail
-rollback() {
-    local message=$1
-    local deploy_name=$2
-
-    log "WARNING" "Removing conda environment '$deploy_name' due to error..."
-    local conda_remove_cmd
-    conda_remove_cmd=(conda env remove "${CONDA_LOC_CMD[@]}" --yes)
-    if ! "${conda_remove_cmd[@]}"; then
-      log "WARNING" "Failed to remove environment with ${CONDA_LOC_CMD[*]}"
-    fi
-    report "$message"
 }
 
 # Main function
@@ -362,21 +389,27 @@ main() {
 
   # Replace literal periods (.) and plus signs (+) in the tag name with underscores (_)
   DEPLOY_NAME=$(echo "$DEPLOY_TAG" | sed 's/[.+]/_/g')
+
+  # Decide whether the new conda environment will be created as a named
+  # environment in the default location or as a prefix-based environment
+  # at the user-specified path
   CONDA_LOC_CMD=(-n "$DEPLOY_NAME")
+  # Note: CONDA_PREFIX is the user-specified directory into which to add a new
+  # conda environment (if they specified one); if they did, then the
+  # CONDA_PATH is set to be the user-specified path plus the environment name,
+  # which is the actual location into which the environment will be installed.
   if [[ -n "$CONDA_PREFIX" ]]; then
     CONDA_PATH="$CONDA_PREFIX/$DEPLOY_NAME"
     CONDA_LOC_CMD=(-p "$CONDA_PATH")
   fi
   
-  # Check for existing kernel iff a kernel prefix is provided
-  if [[ -n "$KERNEL_PREFIX" ]]; then
-    log "INFO" "Checking for pre-existing kernel '$DEPLOY_NAME'..."
-    exists=$(kernel_exists "$DEPLOY_NAME")
-    if [ $? -ne 0 ]; then
-      error_exit "Error checking kernel existence"
-    elif [ "$exists" -eq 1 ]; then
-      error_exit "Kernel '$DEPLOY_NAME' already exists"
-    fi
+  # Check for existing kernel with the same name and error out if it exists
+  log "INFO" "Checking for pre-existing kernel '$DEPLOY_NAME'..."
+  exists=$(kernel_exists "$DEPLOY_NAME")
+  if [ $? -ne 0 ]; then
+    error_exit "Error checking kernel existence"
+  elif [ "$exists" -eq 1 ]; then
+    error_exit "Kernel '$DEPLOY_NAME' already exists"
   fi
   
   # Set up new environment

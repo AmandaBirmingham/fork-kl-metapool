@@ -20,10 +20,10 @@ dependencies:
   - scikit-learn
   - biom-format
   - flake8
+  - watermark
   - pip:
       - click
       - coverage
       - coveralls
       - ipykernel
       - sample-sheet
-      - watermark
