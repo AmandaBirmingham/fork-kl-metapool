@@ -273,7 +273,7 @@ setup_new_environment() {
   fi
 
   # Install the kernel; send to user-specified directory iff KERNEL_PREFIX is set else to new conda env
-  # Note that for all code running after this point, $KERNEL_PREIFIX will ALWAYS be set (to something)
+  # Note that for all code running after this point, $KERNEL_PREFIX will ALWAYS be set (to something)
   if [ -z "$KERNEL_PREFIX" ]; then
     KERNEL_PREFIX=$(conda run "${CONDA_LOC_CMD[@]}" python -c 'import sys; print(sys.prefix)')
   fi
@@ -417,7 +417,7 @@ main() {
     # directory as the one used for setup to ensure that the verification
     # isn't incorrectly depending on any of the setup files.
     VERIFY_TEMP_DIR=$(mktemp -d)
-    trap 'rm -rf "$VERIFY_TEMP_DIR"' EXIT
+    trap 'rm -rf "$SETUP_TEMP_DIR"; rm -rf "$VERIFY_TEMP_DIR"' EXIT
 
     log "INFO" "Verifying new environment..."
     # NB: double use of "$DEPLOY_NAME" is NOT a typo :)
