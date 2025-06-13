@@ -311,7 +311,7 @@ def process_sample(sample, prep_columns, run_center, run_date, run_prefix,
     # to this function explicitly.
     result["lane"] = lane
 
-    # TODO: if modifying this code, see issue #303!
+    # NB: if modifying this code, see issue #303!
     # handle multiple types of sample-sheets, where columns such
     # as 'syndna_pool_number' may or may not be present.
     additional_columns = ['syndna_pool_number', 'mass_syndna_input_ng',

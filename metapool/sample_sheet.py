@@ -604,7 +604,7 @@ class KLSampleSheet(sample_sheet.SampleSheet):
         table = self._remap_table(table, strict)
 
         for column in self._get_expected_data_columns():
-            # TODO: If modifying this, see issue #305; should be an error?
+            # NB: If modifying this, see issue #305; should be an error?
             if column not in table.columns:
                 warnings.warn('The column %s in the sample sheet is empty' %
                               column)
@@ -1764,8 +1764,8 @@ def _id_sample_sheet_class(sheet_type, sheet_version, assay_type):
             else:
                 raise ValueError(
                     _make_version_err_msg(sheet_type, sheet_version))
-        # elif assay_type == _METATRANSCRIPTOMIC:
-        #     sheet_class = MetatranscriptomicSampleSheetv0
+        elif assay_type == _METATRANSCRIPTOMIC:
+            sheet_class = MetatranscriptomicSampleSheetv0
         else:
             raise ValueError(_make_assay_err_msg(assay_type))
     elif sheet_type == STANDARD_METAT_SHEET_TYPE:

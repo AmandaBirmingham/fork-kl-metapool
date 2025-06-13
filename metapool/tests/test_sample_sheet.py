@@ -2582,12 +2582,11 @@ class MetagenomicSampleSheetv101CreationTests(SampleSheetLoadMakeAndLoadTests):
     sample_sheet_name = "good-sample-sheet_w_sample_context.csv"
 
     _SAMPLE_CONTEXT = [
-        {
-        'sample_name': 'sample.3',
-        'sample_type': 'control blank',
-        'primary_qiita_study': '99999',
-        'secondary_qiita_studies': ''
-        }
+        {'sample_name': 'sample.3',
+         'sample_type': 'control blank',
+         'primary_qiita_study': '99999',
+         'secondary_qiita_studies': ''
+         }
     ]
 
     def test_MetagenomicSampleSheetv101_instantiate_from_path(self):
@@ -2626,7 +2625,7 @@ class AbsQuantSampleSheetv10CreationTests(SampleSheetLoadMakeAndLoadTests):
          'iTru5_01_A', 'ACCGACAG', 'MyProject_99999',
          '0.25', '1.0', '1.1', '1'],
     ]
-    
+
     _OUTPUT_COLS = [
         'Sample_ID', 'Sample_Name', 'Sample_Plate', 'well_id_384',
         'I7_Index_ID', 'index', 'I5_Index_ID', 'index2',
