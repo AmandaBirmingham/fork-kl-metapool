@@ -187,16 +187,37 @@ def get_model_and_center(instrument_code):
     else:
         instrument_prefix = _get_machine_code(instrument_id)
         instrument_model = get_model_by_machine_prefix(
-            instrument_prefix, existing_types=available_sequencer_types)
+            instrument_prefix, sequencer_types=available_sequencer_types)
     # end if instrument_id is in the lookup or if must look up by prefix
 
     return instrument_model, run_center
 
 
-def get_model_by_machine_prefix(instrument_prefix, existing_types=None):
+def get_model_by_machine_prefix(instrument_prefix, sequencer_types=None):
+    """Get the instrument model by its machine prefix.
+
+    Parameters
+    ----------
+    instrument_prefix: str
+        The machine prefix of the instrument, e.g., 'MN' for MN01225.
+    sequencer_types: MappingProxyType, optional
+        A mapping of available sequencer types. If None, the
+        sequencer types will be loaded from the YAML file.
+
+    Returns
+    -------
+    MappingProxyType
+        Immutable dictionary of the instrument model details.
+
+    Raises
+    ------
+    ValueError
+        If the instrument prefix is not recognized or if multiple
+        sequencer types match the given prefix.
+    """
     models_w_prefix = get_sequencers_w_key_value(
         _MACHINE_PREFIX_KEY, instrument_prefix,
-        existing_types=existing_types)
+        existing_types=sequencer_types)
     if len(models_w_prefix) == 0:
         raise ValueError(
             f"Unrecognized {_MACHINE_PREFIX_KEY} '{instrument_prefix}'.")
@@ -214,6 +235,26 @@ def get_model_by_machine_prefix(instrument_prefix, existing_types=None):
 
 
 def _get_model_by_sequencer_type_name(inst_model_type, sequencer_types):
+    """Get the instrument model by its sequencer type name.
+
+    Parameters
+    ----------
+    inst_model_type: str
+        The sequencer type name, e.g., 'iSeq', 'NovaSeq6000', etc.
+    sequencer_types: MappingProxyType
+        A mapping of available sequencer types.
+
+    Returns
+    -------
+    MappingProxyType
+        Immutable dictionary of the instrument model details.
+
+    Raises
+    ------
+    ValueError
+        If the sequencer type name is not recognized or if it does not
+        contain a model name.
+    """
     inst_sequencer_type = sequencer_types[inst_model_type]
     instrument_model = inst_sequencer_type[_MODEL_NAME_KEY]
     return instrument_model
