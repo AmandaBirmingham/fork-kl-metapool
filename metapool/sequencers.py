@@ -182,26 +182,41 @@ def get_model_and_center(instrument_code):
         run_center = _INSTRUMENT_LOOKUP.loc[instrument_id, _RUN_CENTER_KEY]
         inst_model_type = _INSTRUMENT_LOOKUP.loc[
             instrument_id, _MODEL_TYPE_KEY]
+        instrument_model = _get_model_by_sequencer_type_name(
+            inst_model_type, sequencer_types=available_sequencer_types)
     else:
         instrument_prefix = _get_machine_code(instrument_id)
-        models_w_prefix = get_sequencers_w_key_value(
-            _MACHINE_PREFIX_KEY, instrument_prefix,
-            existing_types=available_sequencer_types)
-        if len(models_w_prefix) == 0:
-            raise ValueError(
-                f"Unrecognized {_MACHINE_PREFIX_KEY} {instrument_prefix}")
-        elif len(models_w_prefix) > 1:
-            raise ValueError(
-                f"Found {len(models_w_prefix)} sequencers found with "
-                f"{_MACHINE_PREFIX_KEY} = '{instrument_prefix}'.")
-        # end if got an unexpected number of sequencer types w given prefix
-        inst_model_type = next(iter(models_w_prefix))
+        instrument_model = get_model_by_machine_prefix(
+            instrument_prefix, existing_types=available_sequencer_types)
     # end if instrument_id is in the lookup or if must look up by prefix
 
-    inst_sequencer_type = available_sequencer_types[inst_model_type]
-    instrument_model = inst_sequencer_type[_MODEL_NAME_KEY]
-
     return instrument_model, run_center
+
+
+def get_model_by_machine_prefix(instrument_prefix, existing_types=None):
+    models_w_prefix = get_sequencers_w_key_value(
+        _MACHINE_PREFIX_KEY, instrument_prefix,
+        existing_types=existing_types)
+    if len(models_w_prefix) == 0:
+        raise ValueError(
+            f"Unrecognized {_MACHINE_PREFIX_KEY} '{instrument_prefix}'.")
+    elif len(models_w_prefix) > 1:
+        raise ValueError(
+            f"Found {len(models_w_prefix)} sequencer types with "
+            f"{_MACHINE_PREFIX_KEY} '{instrument_prefix}': "
+            f"{', '.join(models_w_prefix)}.")
+    # end if got an unexpected number of sequencer types w given prefix
+
+    inst_model_type = next(iter(models_w_prefix))
+    instrument_model = _get_model_by_sequencer_type_name(
+        inst_model_type, sequencer_types=models_w_prefix)
+    return instrument_model
+
+
+def _get_model_by_sequencer_type_name(inst_model_type, sequencer_types):
+    inst_sequencer_type = sequencer_types[inst_model_type]
+    instrument_model = inst_sequencer_type[_MODEL_NAME_KEY]
+    return instrument_model
 
 
 def get_sequencers_w_key_value(key, value, default=None, existing_types=None):

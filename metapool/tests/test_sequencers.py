@@ -1,6 +1,7 @@
 from metapool.sequencers import _deep_freeze, _get_machine_code, \
     get_model_and_center, get_sequencers_w_key_value, get_sequencer_type, \
-    get_i5_index_sequencers, is_i5_revcomp_sequencer
+    get_i5_index_sequencers, is_i5_revcomp_sequencer, \
+    get_model_by_machine_prefix
 from types import MappingProxyType
 from unittest import TestCase, main
 
@@ -23,6 +24,39 @@ class TestSequencers(TestCase):
                                     'The machine code is a one or two '
                                     'character prefix.'):
             _get_machine_code('8675309')
+
+    def test_get_model_by_machine_prefix(self):
+        """Test getting model by machine prefix."""
+        obs = get_model_by_machine_prefix('MN')
+        self.assertEqual(obs, 'Illumina MiniSeq')
+
+    def test_get_model_by_machine_prefix_err_none(self):
+        """Test error when no model found for machine prefix."""
+        err = "Unrecognized machine_prefix 'MQ'."
+        with self.assertRaisesRegex(ValueError, err):
+            get_model_by_machine_prefix('MQ')
+
+    def test_get_model_by_machine_prefix_err_multiple(self):
+        external_mapping = _deep_freeze({
+            "MiniSeq": {
+                'machine_prefix': 'MN',
+                'model_name': 'Illumina MiniSeq',
+            },
+            "NovaSeqX": {
+                'machine_prefix': 'LH',
+                'model_name': 'Illumina NovaSeq X',
+            },
+            "NovaSeqXPlus": {
+                'machine_prefix': 'LH',
+                'model_name': 'Illumina NovaSeq X Plus',
+            }
+        })
+
+        err = ("Found 2 sequencer types with machine_prefix 'LH': "
+               "NovaSeqX, NovaSeqXPlus.")
+        with self.assertRaisesRegex(ValueError, err):
+            get_model_by_machine_prefix(
+                'LH', existing_types=external_mapping)
 
     def test_get_model_and_center_by_model_prefix(self):
         obs = get_model_and_center('D32611_0365_G00DHB5YXX')
