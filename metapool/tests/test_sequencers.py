@@ -56,7 +56,7 @@ class TestSequencers(TestCase):
                "NovaSeqX, NovaSeqXPlus.")
         with self.assertRaisesRegex(ValueError, err):
             get_model_by_machine_prefix(
-                'LH', existing_types=external_mapping)
+                'LH', sequencer_types=external_mapping)
 
     def test_get_model_and_center_by_model_prefix(self):
         obs = get_model_and_center('D32611_0365_G00DHB5YXX')
