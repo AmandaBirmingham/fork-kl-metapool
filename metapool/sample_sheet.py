@@ -53,6 +53,7 @@ TELLSEQ_METAG_SHEET_TYPE = 'tellseq_metag'
 TELLSEQ_ABSQUANT_SHEET_TYPE = 'tellseq_absquant'
 PACBIO_METAG_SHEET_TYPE = 'pacbio_metag'
 PACBIO_ABSQUANT_SHEET_TYPE = 'pacbio_absquant'
+PACBIO_RNA_OPERON_SHEET_TYPE = 'pacbio_rna_operon'
 ABSQUANT_SHEET_TYPE = 'abs_quant_metag'
 _AMPLICON = 'TruSeq HT'
 _DUMMY_SHEET_TYPE = 'dummy_amp'
@@ -65,6 +66,7 @@ _PLACEHOLDER_EXPT_NAME = 'RKL_experiment'
 # happen coincidentally to be the same, in which case they probably shouldn't.
 _METAGENOMIC = 'Metagenomic'
 _METATRANSCRIPTOMIC = 'Metatranscriptomic'
+_OPERON = 'Operon'
 
 SS_SAMPLE_ID_KEY = 'Sample_ID'
 SS_SAMPLE_PROJECT_KEY = 'Sample_Project'
@@ -87,7 +89,8 @@ SAMPLE_SHEETS_BY_PROTOCOL = {
         TELLSEQ_ABSQUANT_SHEET_TYPE],
     PROTOCOL_NAME_PACBIO_SMRT: [
         PACBIO_METAG_SHEET_TYPE,
-        PACBIO_ABSQUANT_SHEET_TYPE]
+        PACBIO_ABSQUANT_SHEET_TYPE,
+        PACBIO_RNA_OPERON_SHEET_TYPE]
 }
 
 
@@ -159,7 +162,8 @@ _BASE_METAG_REMAPPER = MappingProxyType(
 
 
 class KLSampleSheet(sample_sheet.SampleSheet):
-    _ASSAYS = frozenset({_AMPLICON, _METAGENOMIC, _METATRANSCRIPTOMIC})
+    _ASSAYS = frozenset({_AMPLICON, _METAGENOMIC, _METATRANSCRIPTOMIC,
+                         _OPERON})
     _BIOINFORMATICS_AND_CONTACT = MappingProxyType({
         _BIOINFORMATICS_KEY: None,
         _CONTACT_KEY: None
@@ -1886,6 +1890,13 @@ class PacBioMetagSampleSheetv11(PacBioSampleSheetWithTwistAdapters):
     _HEADER[_ASSAY_KEY] = _METAGENOMIC
 
 
+class PacBioRnaOperonSampleSheetv10(PacBioSampleSheetWithTwistAdapters):
+    _HEADER = PacBioSampleSheetWithTwistAdapters._HEADER.copy()
+    _HEADER[_SHEET_TYPE_KEY] = PACBIO_RNA_OPERON_SHEET_TYPE
+    _HEADER[_SHEET_VERSION_KEY] = '10'
+    _HEADER[_ASSAY_KEY] = _OPERON
+
+
 class TwistAbsquantMixin(AbsQuantMixin):
     _TWIST_ABSQUANT_SPECIFIC_COLUMNS = (SYNDNA_IS_TWISTED_KEY,)
 
@@ -2243,6 +2254,11 @@ def _id_sample_sheet_class(sheet_type, sheet_version, assay_type):
             _METAGENOMIC: {
                 '10': PacBioAbsquantSampleSheetv10,
                 '11': PacBioAbsquantSampleSheetv11,
+            },
+        },
+        PACBIO_RNA_OPERON_SHEET_TYPE: {
+            _OPERON: {
+                '10': PacBioRnaOperonSampleSheetv10,
             },
         }
     }
